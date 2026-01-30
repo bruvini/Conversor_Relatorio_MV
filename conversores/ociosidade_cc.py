@@ -1,29 +1,32 @@
 import streamlit as st
 import pandas as pd
 import re
+import io
 
-def hora_decimal(h):
+# --- FUNÇÕES DE UTILIDADE ---
+def is_date(val):
+    return bool(re.match(r'\d{2}/\d{2}/\d{4}', str(val).strip()))
+
+def is_time(val):
+    return bool(re.match(r'^\d{1,2}:\d{2}$', str(val).strip()))
+
+def to_decimal(time_str):
     try:
-        h = str(h).replace('nan', '')
-        if ':' not in h: return 0.0
-        hh, mm = map(int, h.split(':'))
-        return hh + (mm/60)
+        if not time_str or ':' not in str(time_str): return 0.0
+        h, m = map(int, str(time_str).split(':'))
+        return h + m / 60.0
     except: return 0.0
 
-def limpar_perc(p):
-    try: return float(str(p).replace('%', '').replace(',', '.'))
-    except: return 0.0
-
-def formatar_hora(h):
-    h = str(h).replace('nan', '').strip()
-    if len(h) == 4 and ':' in h: return '0' + h
-    if ':' not in h: return '00:00'
-    return h
-
-def decimal_para_str(d):
-    h = int(d); m = int((d - h) * 60)
+def to_time_str(decimal_val):
+    if decimal_val < 0: decimal_val = 0
+    h = int(decimal_val)
+    m = int(round((decimal_val - h) * 60))
+    if m >= 60:
+        h += m // 60
+        m = m % 60
     return f"{h:02d}:{m:02d}"
 
+# --- LÓGICA DE PROCESSAMENTO ---
 def processar_relatorio(arquivo_upload):
     try:
         df_raw = pd.read_csv(arquivo_upload, header=None, encoding='latin-1', on_bad_lines='skip')
@@ -31,181 +34,110 @@ def processar_relatorio(arquivo_upload):
         arquivo_upload.seek(0)
         df_raw = pd.read_csv(arquivo_upload, header=None, encoding='cp1252', on_bad_lines='skip')
 
-    dados_locais = []
-    cc_atual_nome = "N/D"
+    rows = df_raw.values.tolist()
+    current_cc, current_date, data_consolidada = "N/D", None, []
 
-    for index, row in df_raw.iterrows():
-        linha_texto = " ".join([str(x) for x in row if pd.notna(x)])
-        col0 = str(row[0]).strip()
-        if 'Centro Cir' in linha_texto and ':' in linha_texto:
-            match_cc = re.search(r'Centro Cir.*?:.*?(\d+)\s+(.*)', linha_texto, re.IGNORECASE)
-            if match_cc: cc_atual_nome = match_cc.group(2).strip()
+    for i, row in enumerate(rows):
+        row_str = [str(x).strip() if pd.notna(x) else "" for x in row]
+        row_joined = " ".join(row_str).lower()
+        
+        # Identifica Centro Cirúrgico
+        if "centro cir" in row_joined:
+            for idx, val in enumerate(row_str):
+                if "centro cir" in val.lower():
+                    for j in range(idx + 1, len(row_str)):
+                        cand = row_str[j]
+                        if cand and not cand.isdigit() and ":" not in cand and "centro" not in cand.lower():
+                            current_cc = cand
+                            break
+                    break
             continue
-        if 'Data' in linha_texto or 'Total' in linha_texto or 'Emitido' in linha_texto: continue
-        if re.match(r'\d{2}/\d{2}/\d{4}', col0):
-            raw_col2 = str(row[2]).strip()
-            raw_col3 = str(row[3]).strip()
-            nome_sala = raw_col3
-            match_misturado = re.match(r'^(\d+)\s+(.+)', raw_col2)
-            if match_misturado: nome_sala = match_misturado.group(2)
-            elif raw_col2.replace('.', '').isdigit() and (nome_sala == 'nan' or nome_sala == ''): nome_sala = "Nome Indefinido"
-            elif raw_col2 != 'nan' and not raw_col2.replace('.', '').isdigit(): nome_sala = raw_col2
-            
-            inicio = str(row[6]).strip() if pd.notna(row[6]) else "00:00"
-            cols_validas = [str(x).strip() for x in row if pd.notna(x) and str(x).strip() != '']
-            perc = 0.0; tempo_ocioso = "00:00"; fim = "00:00"
-            try:
-                if len(cols_validas) >= 3:
-                    perc = cols_validas[-1]
-                    tempo_ocioso = cols_validas[-2]
-                    if pd.notna(row[7]) and ':' in str(row[7]): fim = str(row[7])
-                    elif pd.notna(row[8]) and ':' in str(row[8]): fim = str(row[8])
-            except: pass
-            dados_locais.append({
-                'Data': col0, 'Centro_Cirurgico': cc_atual_nome, 'Sala_Cirurgica': nome_sala,
-                'Inicio_Funcionamento': inicio, 'Fim_Funcionamento': fim,
-                'Tempo_Ocioso_Original': tempo_ocioso, '%_Ociosidade': perc
-            })
-    return dados_locais
 
+        if "total de horas" in row_joined or "funcionamento" in row_joined: continue
+        if is_date(row_str[0]): current_date = row_str[0]
+        
+        times_in_row = [val for val in row_str if is_time(val)]
+        
+        if len(times_in_row) >= 2:
+            room_name, found_room = "", False
+            for idx in range(0, 5): 
+                if idx >= len(row_str) or is_time(row_str[idx]): break
+                if row_str[idx].isdigit():
+                    for n_idx in range(idx + 1, idx + 4):
+                        if n_idx < len(row_str) and row_str[n_idx] and not is_time(row_str[n_idx]) and not row_str[n_idx].isdigit():
+                            room_name = row_str[n_idx]
+                            found_room = True
+                            break
+                    if found_room: break
+
+            if found_room and current_date:
+                # Lógica de colunas dinâmicas
+                if is_time(row_str[6]) and len(row_str) > 14: # Layout Largo
+                    inicio, fim, ociosa, perc_str = row_str[6], row_str[7], row_str[13], row_str[14]
+                elif is_time(row_str[4]) and len(row_str) > 11: # Layout Estreito
+                    inicio, fim, ociosa, perc_str = row_str[4], row_str[5], row_str[10], row_str[11]
+                else:
+                    inicio, fim = times_in_row[0], times_in_row[1]
+                    perc_str = row_str[-1]
+                    ociosa = times_in_row[-1]
+
+                start_dec, end_dec, ociosa_dec = to_decimal(inicio), to_decimal(fim), to_decimal(ociosa)
+                disp_dec = end_dec - start_dec
+                util_dec = max(0, disp_dec - ociosa_dec)
+                
+                try: p = float(perc_str.replace('%', '').replace(',', '.'))
+                except: p = (ociosa_dec / disp_dec * 100) if disp_dec > 0 else 0.0
+
+                data_consolidada.append({
+                    'Data': current_date,
+                    'Centro_Cirurgico': current_cc,
+                    'Sala_Cirurgica': room_name,
+                    'Inicio_Funcionamento': inicio,
+                    'Fim_Funcionamento': fim,
+                    'Tempo_Disponivel': to_time_str(disp_dec),
+                    'Tempo_Utilizado': to_time_str(util_dec),
+                    'Tempo_Ocioso': ociosa,
+                    'Tempo_Ocioso_Decimal': round(ociosa_dec, 4),
+                    '%_Ociosidade': round(p, 2)
+                })
+    return data_consolidada
+
+# --- FUNÇÃO PRINCIPAL CHAMADA PELO APP.PY ---
 def exibir():
-    # 1. CSS Customizado para Tradução e Banner
     st.markdown("""
         <style>
-        /* Estilo do Banner em Faixa */
         .banner-container {
-            position: relative;
-            width: 100%;
-            height: 150px;
-            overflow: hidden;
-            border-radius: 10px;
-            margin-bottom: 25px;
+            position: relative; width: 100%; height: 150px; overflow: hidden; border-radius: 10px; margin-bottom: 25px;
             background-image: url('https://rmscentrocirurgico.com.br/wp-content/uploads/2024/12/Equipamentos-de-ponta-em-centros-cirurgicos-O-que-isso-significa-para-voce-1024x536.jpg');
-            background-size: cover;
-            background-position: center 30%;
+            background-size: cover; background-position: center 30%;
         }
         .banner-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 45, 90, 0.5); /* Blur azulado */
-            backdrop-filter: blur(4px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 45, 90, 0.5); backdrop-filter: blur(4px);
+            display: flex; align-items: center; justify-content: center;
         }
-        .banner-text {
-            color: white;
-            font-size: 28px;
-            font-weight: bold;
-            text-align: center;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        }
-
-        /* Tradução do File Uploader para PT-BR */
-        [data-testid="stFileUploadDropzone"] div div span::text {
-            display: none;
-        }
-        [data-testid="stFileUploadDropzone"] div div span::after {
-            content: "Arraste e solte os arquivos aqui";
-            display: block;
-        }
-        [data-testid="stFileUploadDropzone"] div div small::text {
-            display: none;
-        }
-        [data-testid="stFileUploadDropzone"] div div small::after {
-            content: "Limite de 200MB por arquivo • CSV";
-            display: block;
-        }
-        section[data-testid="stFileUploadDropzone"] button {
-            display: none;
-        }
-        section[data-testid="stFileUploadDropzone"]::after {
-            content: "Selecionar arquivos";
-            display: inline-block;
-            padding: 0.5em 1em;
-            background-color: #004a99;
-            color: white;
-            border-radius: 5px;
-            margin-top: 10px;
-            cursor: pointer;
-            text-align: center;
-        }
+        .banner-text { color: white; font-size: 28px; font-weight: bold; text-align: center; }
         </style>
-        
         <div class="banner-container">
-            <div class="banner-overlay">
-                <div class="banner-text">Conversor de Ociosidade - Centro Cirúrgico</div>
-            </div>
+            <div class="banner-overlay"><div class="banner-text">Conversor de Ociosidade - Centro Cirúrgico</div></div>
         </div>
     """, unsafe_allow_html=True)
 
-    # Bloco de Passo a Passo
-    with st.expander("Clique aqui para ver o passo a passo de como emitir o relatório no MV Soul", expanded=False):
-        st.markdown("""
-        ### Instruções para Extração
-        1. **Acesse o MV Soul**.
-        2. Selecione o módulo **Atendimento** (ícone de estetoscópio).
-        3. Navegue em: **Centro Cirúrgico e Obstétrico** > **Relatórios** > **Operacionais**.
-        4. Escolha a opção **Ociosidade das Salas**.
-        5. Na tela de parâmetros:
-            * Mantenha **Centro Cirúrgico** e **Sala Cirúrgica** como "Todos".
-            * Selecione o **Período Inicial e Final** (recomendado até 3 meses).
-        6. Em **Tipo de Relatório**, selecione **Analítico**.
-        7. Em **Tipo de Impressão**, selecione **CSV**.
-        """)
-        st.info("ℹ️ **Segurança**: Os arquivos são processados em RAM e descartados após a conversão. Nada é armazenado.")
+    with st.expander("Instruções para Extração no MV Soul"):
+        st.markdown("1. **Atendimento** > **Centro Cirúrgico** > **Relatórios** > **Operacionais** > **Ociosidade das Salas**.\n2. Tipo: **Analítico** | Impressão: **CSV**.")
 
-    st.write("Selecione um ou mais arquivos gerados (R_OCIO_CIR) abaixo:")
-    
-    # O uploader agora aparecerá estilizado/traduzido pelo CSS acima
-    uploaded_files = st.file_uploader(
-        "Upload CSV", 
-        type=["csv"], 
-        accept_multiple_files=True, 
-        label_visibility="collapsed",
-        key="uploader_ociosidade"
-    )
+    uploaded_files = st.file_uploader("Upload de arquivos CSV", type=["csv"], accept_multiple_files=True)
 
     if uploaded_files:
-        lista_todos_dados = []
-        progress_bar = st.progress(0)
-        for i, file in enumerate(uploaded_files):
+        lista_total = []
+        for file in uploaded_files:
             dados = processar_relatorio(file)
-            if dados: lista_todos_dados.extend(dados)
-            progress_bar.progress((i + 1) / len(uploaded_files))
+            if dados: lista_total.extend(dados)
         
-        if lista_todos_dados:
-            df = pd.DataFrame(lista_todos_dados)
-            # Tratamento de dados
-            df['Inicio_Funcionamento'] = df['Inicio_Funcionamento'].apply(formatar_hora)
-            df['Fim_Funcionamento'] = df['Fim_Funcionamento'].apply(formatar_hora)
-            df['%_Ociosidade'] = df['%_Ociosidade'].apply(limpar_perc)
-            df['Inicio_Dec'] = df['Inicio_Funcionamento'].apply(hora_decimal)
-            df['Fim_Dec'] = df['Fim_Funcionamento'].apply(hora_decimal)
-            df['Tempo_Ocioso_Decimal'] = df['Tempo_Ocioso_Original'].apply(hora_decimal)
-            df['Tempo_Disponivel_Dec'] = (df['Fim_Dec'] - df['Inicio_Dec']).clip(lower=0)
-            df['Tempo_Utilizado_Dec'] = (df['Tempo_Disponivel_Dec'] - df['Tempo_Ocioso_Decimal']).clip(lower=0)
-            df['Tempo_Disponivel'] = df['Tempo_Disponivel_Dec'].apply(decimal_para_str)
-            df['Tempo_Utilizado'] = df['Tempo_Utilizado_Dec'].apply(decimal_para_str)
-            df['Tempo_Ocioso'] = df['Tempo_Ocioso_Decimal'].apply(decimal_para_str)
-
-            df['Data_Temp'] = pd.to_datetime(df['Data'], format='%d/%m/%Y', errors='coerce')
-            df = df.sort_values(by=['Data_Temp', 'Centro_Cirurgico', 'Sala_Cirurgica'])
-
-            cols = ['Data', 'Centro_Cirurgico', 'Sala_Cirurgica', 'Inicio_Funcionamento', 
-                    'Fim_Funcionamento', 'Tempo_Disponivel', 'Tempo_Utilizado', 
-                    'Tempo_Ocioso', 'Tempo_Ocioso_Decimal', '%_Ociosidade']
+        if lista_total:
+            df = pd.DataFrame(lista_total)
+            st.success(f"Processado: {len(df)} registros.")
+            st.dataframe(df, use_container_width=True)
             
-            df_final = df[cols]
-            st.success(f"Compilação concluída com {len(df_final)} registros.")
-            st.dataframe(df_final, use_container_width=True)
-            
-            csv_unificado = df_final.to_csv(index=False, encoding='utf-8-sig')
-            st.download_button(
-                label="📥 Baixar Base CSV Compilada",
-                data=csv_unificado,
-                file_name="ociosidade_consolidada_hmsj.csv",
-                mime="text/csv"
-            )
-        else:
-            st.error("Nenhum dado válido extraído.")
+            csv = df.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button("📥 Baixar Base Consolidada", data=csv, file_name="ociosidade_consolidada.csv", mime="text/csv")

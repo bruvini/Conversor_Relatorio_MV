@@ -1,21 +1,22 @@
 import streamlit as st
 from componentes import header, footer
-from conversores import ociosidade_cc, estatisticas_internacao
+from conversores import ociosidade_cc, estatisticas_internacao, censo_retroativo # Import atualizado
 
-# 1. Configuração de página (Sempre a primeira linha de comando)
+# 1. Configuração de página
 st.set_page_config(page_title="Conversor de Relatórios - MV", layout="wide")
 
 # 2. Renderização do Cabeçalho
 header.exibir()
 
-# 3. Menu Lateral com chave única (Key) para evitar KeyError
+# 3. Menu Lateral
 st.sidebar.title("Navegação")
 opcao = st.sidebar.selectbox(
     "Selecione uma opção:", 
     [
         "Início", 
         "Ociosidade de Centro Cirúrgico",
-        "Estatísticas de Internação" # Nova opção
+        "Estatísticas de Internação",
+        "Censo Retroativo" # Nova opção incluída
     ],
     key="menu_navegacao_principal"
 )
@@ -24,7 +25,7 @@ opcao = st.sidebar.selectbox(
 if opcao == "Início":
     st.header("Bem-vindo ao Portal de Conversores")
     st.markdown("""
-    Esta plataforma foi desenvolvida para otimizar o seu fluxo de trabalho ao trabalhar com relatórios emitidos pelo MV Soul no Hospital Municipal São José.
+    Esta plataforma foi desenvolvida para otimizar o seu fluxo de trabalho ao trabalhar com relatórios emitidos pelo MV Soul no Hospital Municipal São José. 
     
     ### Como o sistema funciona?
     Os relatórios extraídos diretamente do sistema MV muitas vezes vêm em formatos complexos para análise imediata (como CSVs com estruturas de impressão ou PDF). Este sistema:
@@ -46,5 +47,8 @@ elif opcao == "Ociosidade de Centro Cirúrgico":
 elif opcao == "Estatísticas de Internação":
     estatisticas_internacao.exibir()
 
-# 5. Rodapé (chamado por último para evitar conflitos de renderização)
+elif opcao == "Censo Retroativo":
+    censo_retroativo.exibir()
+
+# 5. Rodapé
 footer.exibir()

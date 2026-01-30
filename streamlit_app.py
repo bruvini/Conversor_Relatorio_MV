@@ -1,6 +1,38 @@
 import streamlit as st
+from componentes import header, footer
+from conversores import ociosidade_cc
 
-st.title("🎈 My new app")
-st.write(
-    "Let's start building! For help and inspiration, head over to [docs.streamlit.io](https://docs.streamlit.io/)."
-)
+# Configuração inicial obrigatória
+st.set_page_config(page_title="Conversor de Relatórios - MV", layout="wide")
+
+# Chamada dos componentes estruturais
+header.exibir()
+footer.exibir()
+
+# --- MENU LATERAL ---
+st.sidebar.title("Navegação")
+opcao = st.sidebar.selectbox("Selecione uma opção:", ["Início", "Ociosidade de Centro Cirúrgico"])
+
+# --- LÓGICA DE PÁGINAS ---
+if opcao == "Início":
+    st.header("Bem-vindo ao Portal de Conversores")
+    
+    st.markdown("""
+    Esta plataforma foi desenvolvida para otimizar o seu fluxo de trabalho ao trabalhar com relatórios emitidos pelo MV Soul no Hospital Municipal São José.
+    
+    ### Como o sistema funciona?
+    Os relatórios extraídos diretamente do sistema MV muitas vezes vêm em formatos complexos para análise imediata (como CSVs com estruturas de impressão ou PDF). Este sistema:
+    1. **Lê e interpreta** a estrutura bruta dos arquivos.
+    2. **Extrai os dados essenciais**, eliminando cabeçalhos repetitivos e lixo visual.
+    3. **Realiza cálculos automáticos** conforme necessidade.
+    4. **Consolida múltiplos arquivos** em uma única base de dados padronizada.
+
+    ### Como utilizar?
+    Utilize o **Menu Lateral** à esquerda para selecionar o tipo de relatório que você deseja converter. 
+    Cada ferramenta solicitará o upload dos arquivos correspondentes e gerará uma planilha pronta para uso em Excel, Planilhas Google ou Power BI.
+    """)
+    
+    st.info("ℹ️ **Segurança e Privacidade**: Os arquivos enviados são processados temporariamente na memória do servidor e descartados imediatamente após a conversão. **Nenhum dado é armazenado** de forma permanente ou utilizado para outros fins.")
+
+elif opcao == "Ociosidade de Centro Cirúrgico":
+    ociosidade_cc.exibir()

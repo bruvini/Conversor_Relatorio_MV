@@ -1,7 +1,7 @@
 import streamlit as st
 
 def exibir():
-    col1, col2, col3 = st.columns([1, 2, 1], vertical_alignment="center")
+    col1, col2, col3 = st.columns([1, 2, 1])
     
     with col1:
         st.image("https://mv.com.br/assets/img/content/mv_share.jpg", width=150)

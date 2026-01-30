@@ -1,6 +1,6 @@
 import streamlit as st
 from componentes import header, footer
-from conversores import ociosidade_cc
+from conversores import ociosidade_cc, estatisticas_internacao
 
 # 1. Configuração de página (Sempre a primeira linha de comando)
 st.set_page_config(page_title="Conversor de Relatórios - MV", layout="wide")
@@ -12,8 +12,12 @@ header.exibir()
 st.sidebar.title("Navegação")
 opcao = st.sidebar.selectbox(
     "Selecione uma opção:", 
-    ["Início", "Ociosidade de Centro Cirúrgico"],
-    key="menu_navegacao_principal"  # Isso resolve o conflito de Session State
+    [
+        "Início", 
+        "Ociosidade de Centro Cirúrgico",
+        "Estatísticas de Internação" # Nova opção
+    ],
+    key="menu_navegacao_principal"
 )
 
 # 4. Lógica de Navegação
@@ -38,6 +42,9 @@ if opcao == "Início":
 
 elif opcao == "Ociosidade de Centro Cirúrgico":
     ociosidade_cc.exibir()
+
+elif opcao == "Estatísticas de Internação":
+    estatisticas_internacao.exibir()
 
 # 5. Rodapé (chamado por último para evitar conflitos de renderização)
 footer.exibir()

@@ -158,7 +158,13 @@ def exibir():
     st.write("Selecione um ou mais arquivos gerados (R_OCIO_CIR) abaixo:")
     
     # O uploader agora aparecerá estilizado/traduzido pelo CSS acima
-    uploaded_files = st.file_uploader("Uploader", type=["csv"], accept_multiple_files=True, label_visibility="collapsed")
+    uploaded_files = st.file_uploader(
+        "Upload CSV", 
+        type=["csv"], 
+        accept_multiple_files=True, 
+        label_visibility="collapsed",
+        key="uploader_ociosidade"
+    )
 
     if uploaded_files:
         lista_todos_dados = []

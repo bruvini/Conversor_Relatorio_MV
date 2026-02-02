@@ -33,60 +33,98 @@ def processar_estatisticas(arquivo_upload):
         'hospitalar', 'sintético', 'indicadores'
     ]
 
+    # 1. Verifica se o arquivo tem o padrão analítico (contém a palavra "Data:")
+    # Isso é crucial para ignorar o resumo ao final do arquivo analítico
+    tem_datas_internas = any("Data:" in " ".join(r) for r in linhas)
+
     for row in linhas:
         if not row: continue
         
-        # 1. Captura a Data na coluna C (Índice 2)
-        # O padrão no CSV analítico é uma linha de cabeçalho com a data
-        col_c = row[2].strip() if len(row) > 2 else ""
-        match_data = re.search(r'(\d{2}/\d{2}/\d{4})', col_c)
+        linha_texto = " ".join(row)
+        
+        # 1. Captura a Data (Padrão: Data: DD/MM/YYYY)
+        match_data = re.search(r'Data:\s*(\d{2}/\d{2}/\d{4})', linha_texto)
         if match_data:
             data_atual = match_data.group(1)
             continue
             
-        # 2. Captura o Setor na coluna A (Índice 0)
-        setor_raw = str(row[0]).strip() if len(row) > 0 else ""
+        # 2. Identifica o Setor
+        setor_raw = ""
         
-        # Ignora as linhas de resumo por dia que aparecem no final do bloco (onde Col A é uma data)
-        if re.match(r'\d{2}/\d{2}/\d{4}', setor_raw):
+        # Se o arquivo tem datas (Analítico), o setor DEVE estar na coluna A (Índice 0)
+        # Isso ignora o resumo ao final do arquivo, onde os setores estão na Coluna C
+        if tem_datas_internas:
+            if len(row) > 0 and row[0].strip() and not any(p in row[0].lower() for p in palavras_bloqueadas):
+                setor_raw = row[0].strip()
+        # Fallback para o modo Sintético (caso o usuário suba o arquivo de resumo)
+        else:
+            if len(row) > 2 and row[2].strip() and not any(p in row[2].lower() for p in palavras_bloqueadas):
+                setor_raw = row[2].strip()
+
+        # Filtros de segurança para evitar capturar lixo de formatação
+        if not setor_raw or re.match(r'\d{2}/\d{2}/\d{4}', setor_raw) or len(setor_raw) < 3:
             continue
             
-        # Limpeza do texto do setor (remove prefixos do MV)
         setor = setor_raw.replace('Unidade de Internação :', '').replace('Unidade de Internação', '').strip()
         
-        # Filtro de lixo: ignora linhas vazias ou cabeçalhos
-        if not setor or any(p in setor.lower() for p in palavras_bloqueadas) or len(setor) < 3:
-            continue
-            
-        # 3. Processamento dos dados se houver uma data capturada
-        if data_atual:
-            dados_finais.append({
-                'Data': data_atual,
-                'Setor': setor,
-                '00:00': limpar_valor(row[4]) if len(row) > 4 else 0,         # Col E
-                'Intern.': limpar_valor(row[6]) if len(row) > 6 else 0,       # Col G
-                'Transf DE': limpar_valor(row[8]) if len(row) > 8 else 0,     # Col I
-                'Altas': limpar_valor(row[11]) if len(row) > 11 else 0,       # Col L
-                'Transf PARA': limpar_valor(row[13]) if len(row) > 13 else 0, # Col N
-                'Obitos': limpar_valor(row[15]) if len(row) > 15 else 0,      # Col P
-                'Óbitos +24Hs': limpar_valor(row[18]) if len(row) > 18 else 0, # Col S
-                'Obitos -24Hs': limpar_valor(row[20]) if len(row) > 20 else 0, # Col U
-                'Pac/Dia': limpar_valor(row[37]) if len(row) > 37 else 0      # Col AL
-            })
+        # 3. Mapeamento Dinâmico de Colunas
+        if data_atual or not tem_datas_internas:
+            # Caso A: Estrutura Analítica com Deslocamento (High-col count)
+            # Usando as coordenadas: R(17), Y(24), AF(31), AL(37), AQ(42), AW(48), BD(55), BG(58), CR(95)
+            if len(row) > 80:
+                dados_finais.append({
+                    'Data': data_atual if data_atual else "Sintético",
+                    'Setor': setor,
+                    '00:00': limpar_valor(row[17]),
+                    'Intern.': limpar_valor(row[24]),
+                    'Transf DE': limpar_valor(row[31]),
+                    'Altas': limpar_valor(row[37]),
+                    'Transf PARA': limpar_valor(row[42]),
+                    'Obitos': limpar_valor(row[48]),
+                    'Óbitos +24Hs': limpar_valor(row[55]),
+                    'Obitos -24Hs': limpar_valor(row[58]),
+                    'Pac/Dia': limpar_valor(row[95])
+                })
+            # Caso B: Estrutura Analítica Padrão (Sem quebra de linha excessiva)
+            elif tem_datas_internas:
+                dados_finais.append({
+                    'Data': data_atual,
+                    'Setor': setor,
+                    '00:00': limpar_valor(row[4]),          # Col E
+                    'Intern.': limpar_valor(row[6]),        # Col G
+                    'Transf DE': limpar_valor(row[8]),      # Col I
+                    'Altas': limpar_valor(row[11]),         # Col L
+                    'Transf PARA': limpar_valor(row[13]),   # Col N
+                    'Obitos': limpar_valor(row[15]),        # Col P
+                    'Óbitos +24Hs': limpar_valor(row[18]),  # Col S
+                    'Obitos -24Hs': limpar_valor(row[20]),  # Col U
+                    'Pac/Dia': limpar_valor(row[37])        # Col AL
+                })
+            # Caso C: Estrutura Sintética (Baseada no mapeamento do arquivo 3)
+            else:
+                dados_finais.append({
+                    'Data': "Consolidado",
+                    'Setor': setor,
+                    '00:00': limpar_valor(row[5]), 'Intern.': limpar_valor(row[8]),
+                    'Transf DE': limpar_valor(row[11]), 'Altas': limpar_valor(row[13]),
+                    'Transf PARA': limpar_valor(row[16]), 'Obitos': limpar_valor(row[20]),
+                    'Óbitos +24Hs': limpar_valor(row[24]), 'Obitos -24Hs': limpar_valor(row[27]),
+                    'Pac/Dia': limpar_valor(row[44])
+                })
 
-    if not dados_finais:
-        return None
-
+    if not dados_finais: return None
+    
     df = pd.DataFrame(dados_finais)
     
-    # Ordenação final cronológica
-    df['Data_dt'] = pd.to_datetime(df['Data'], format='%d/%m/%Y', errors='coerce')
-    df = df.sort_values(by=['Data_dt', 'Setor']).drop(columns=['Data_dt'])
-
+    # Ordenação final se houver datas reais
+    if data_atual:
+        df['Data_dt'] = pd.to_datetime(df['Data'], format='%d/%m/%Y', errors='coerce')
+        df = df.sort_values(by=['Data_dt', 'Setor']).drop(columns=['Data_dt'])
+    
     return df
 
 def exibir():
-    # Estilização Visual do Banner
+    # Estilização do Banner
     st.markdown("""
         <style>
         .banner-container {
@@ -100,13 +138,9 @@ def exibir():
             display: flex; align-items: center; justify-content: center;
         }
         .banner-text { color: white; font-size: 28px; font-weight: bold; text-align: center; }
-        [data-testid="stFileUploadDropzone"] div div span::text { display: none; }
-        [data-testid="stFileUploadDropzone"] div div span::after { content: "Arraste os arquivos R_EST_HOSPITALAR aqui"; display: block; }
         </style>
         <div class="banner-container">
-            <div class="banner-overlay">
-                <div class="banner-text">Estatísticas de Internação - Sintético</div>
-            </div>
+            <div class="banner-overlay"><div class="banner-text">Estatísticas de Internação</div></div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -118,11 +152,10 @@ def exibir():
         3. **IMPORTANTE: Mantenha DESMARCADAS** as opções:
             * *Imprimir apenas resumo*
             * *Quadro de resumo por unidade*
-        4. Selecionar **Todos** em **Tipo de Unidade de Internação** e **Tipo de Atendimento**.
+        4. Selecionar **Todos** em Unidade e Atendimento.
         5. Selecionar: **Taxa Ocup. Operacional: Sim**.
         6. Tipo de impressão: **CSV**.
         """)
-        st.info("ℹ️ **Nota**: Agora não é mais necessário informar a data manualmente. O sistema captura as datas de cada dia automaticamente de dentro do arquivo.")
 
     uploaded_files = st.file_uploader(
         "Uploader", 
@@ -134,7 +167,7 @@ def exibir():
 
     if uploaded_files:
         lista_dfs = []
-        with st.spinner("Processando relatórios por período..."):
+        with st.spinner("Removendo duplicatas e tratando quebras de página..."):
             for file in uploaded_files:
                 df_proc = processar_estatisticas(file)
                 if df_proc is not None:
@@ -142,20 +175,10 @@ def exibir():
         
         if lista_dfs:
             df_final = pd.concat(lista_dfs).drop_duplicates()
-            
-            # Ordenação final garantida
-            df_final['Data_dt'] = pd.to_datetime(df_final['Data'], format='%d/%m/%Y', errors='coerce')
-            df_final = df_final.sort_values(by=['Data_dt', 'Setor']).drop(columns=['Data_dt'])
-
             st.success(f"Sucesso! {len(df_final)} registros processados.")
             st.dataframe(df_final, use_container_width=True)
-
+            
             csv = df_final.to_csv(index=False, encoding='utf-8-sig')
-            st.download_button(
-                label="📥 Baixar Planilha Consolidada",
-                data=csv,
-                file_name="estatisticas_internacao_hmsj.csv",
-                mime="text/csv"
-            )
+            st.download_button(label="📥 Baixar Planilha Consolidada", data=csv, file_name="estatisticas_internacao_hmsj.csv", mime="text/csv")
         else:
-            st.error("Erro: Não foi possível extrair dados. Verifique se as opções de resumo foram desmarcadas na extração do MV.")
+            st.error("Erro: Não foi possível extrair dados. Verifique se seguiu as instruções de extração.")

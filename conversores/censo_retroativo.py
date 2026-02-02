@@ -16,7 +16,7 @@ def processar_censo(arquivos_com_data):
 
     for item in arquivos_com_data:
         arquivo = item['arquivo']
-        data_referencia = item['data'].strftime('%d/%m/%Y')
+        data_referencia = item['data'].strftime('%d-%m-%Y')
         
         # Leitura do conteúdo do arquivo
         conteudo = arquivo.getvalue()

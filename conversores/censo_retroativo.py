@@ -16,6 +16,7 @@ def processar_censo(arquivos_com_data):
 
     for item in arquivos_com_data:
         arquivo = item['arquivo']
+        # AJUSTE: Alterado de %d/%m/%Y para %d-%m-%Y para usar hífens
         data_referencia = item['data'].strftime('%d-%m-%Y')
         
         # Leitura do conteúdo do arquivo
@@ -73,7 +74,8 @@ def processar_censo(arquivos_com_data):
     df = pd.DataFrame(dados_totais)
     
     # Ordenação por Data e Setor
-    df['Data_dt'] = pd.to_datetime(df['Data'], format='%d/%m/%Y')
+    # Ajustamos o format aqui também para bater com o novo padrão de hífen
+    df['Data_dt'] = pd.to_datetime(df['Data'], format='%d-%m-%Y')
     df = df.sort_values(by=['Data_dt', 'Setor']).drop(columns=['Data_dt'])
     
     return df
@@ -127,7 +129,6 @@ def exibir():
             with col_file:
                 st.markdown(f"📄 **{file.name}**")
             with col_date:
-                # AJUSTE: Adicionado o parâmetro format="DD/MM/YYYY"
                 data_ref = st.date_input(
                     f"Data para {file.name}", 
                     key=f"d_{file.name}_{i}", 

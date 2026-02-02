@@ -46,8 +46,10 @@ def processar_relatorio(arquivo_upload):
             for idx, val in enumerate(row_str):
                 if "centro cir" in val.lower():
                     for j in range(idx + 1, len(row_str)):
-                        cand = row_str[j]
-                        if cand and not cand.isdigit() and ":" not in cand and "centro" not in cand.lower():
+                        cand = row_str[j].strip()
+                        if cand and not cand.isdigit() and cand != ":":
+                            if "centro cir" in cand.lower() and cand.endswith(":"):
+                                continue
                             current_cc = cand
                             break
                     break

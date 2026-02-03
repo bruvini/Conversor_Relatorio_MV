@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import csv
 import io
+from datetime import datetime
 
 def limpar_valor(valor):
     try:
@@ -44,44 +45,38 @@ def processar_censo(arquivos_com_data):
                 continue
             
             # 2. Identifica a linha de Totais na Coluna C (Índice 2)
-            # O cabeçalho 'Total de ' indica que os valores estão na PRÓXIMA linha
             if len(row) > 2 and 'Total de' in str(row[2]):
                 if idx + 1 < len(linhas):
                     v = linhas[idx + 1] # Linha dos valores
                     
-                    # Extração baseada no mapeamento de colunas fornecido
                     dados_totais.append({
                         'Data': data_referencia,
                         'Setor': setor_atual,
-                        'Total': limpar_valor(v[3]) if len(v) > 3 else 0,             # Col D
-                        'Extras': limpar_valor(v[6]) if len(v) > 6 else 0,            # Col G
-                        'Ocup': limpar_valor(v[8]) if len(v) > 8 else 0,              # Col I
-                        'Vagos': limpar_valor(v[14]) if len(v) > 14 else 0,           # Col O
-                        'Reserv.': limpar_valor(v[17]) if len(v) > 17 else 0,         # Col R
-                        'Acomp.': limpar_valor(v[19]) if len(v) > 19 else 0,          # Col T
-                        'Infectados': limpar_valor(v[21]) if len(v) > 21 else 0,      # Col V
-                        'Reforma': limpar_valor(v[23]) if len(v) > 23 else 0,         # Col X
-                        'Interd. Infec.': limpar_valor(v[28]) if len(v) > 28 else 0,  # Col AC
-                        'Interd. Temp.': limpar_valor(v[31]) if len(v) > 31 else 0,   # Col AF
-                        'Interditado': limpar_valor(v[35]) if len(v) > 35 else 0,     # Col AJ
-                        'Manutenção': limpar_valor(v[37]) if len(v) > 37 else 0,      # Col AL
-                        'Limpeza': limpar_valor(v[41]) if len(v) > 41 else 0          # Col AP
+                        'Total': limpar_valor(v[3]) if len(v) > 3 else 0,
+                        'Extras': limpar_valor(v[6]) if len(v) > 6 else 0,
+                        'Ocup': limpar_valor(v[8]) if len(v) > 8 else 0,
+                        'Vagos': limpar_valor(v[14]) if len(v) > 14 else 0,
+                        'Reserv.': limpar_valor(v[17]) if len(v) > 17 else 0,
+                        'Acomp.': limpar_valor(v[19]) if len(v) > 19 else 0,
+                        'Infectados': limpar_valor(v[21]) if len(v) > 21 else 0,
+                        'Reforma': limpar_valor(v[23]) if len(v) > 23 else 0,
+                        'Interd. Infec.': limpar_valor(v[28]) if len(v) > 28 else 0,
+                        'Interd. Temp.': limpar_valor(v[31]) if len(v) > 31 else 0,
+                        'Interditado': limpar_valor(v[35]) if len(v) > 35 else 0,
+                        'Manutenção': limpar_valor(v[37]) if len(v) > 37 else 0,
+                        'Limpeza': limpar_valor(v[41]) if len(v) > 41 else 0
                     })
 
     if not dados_totais:
         return None
         
     df = pd.DataFrame(dados_totais)
-    
-    # Ordenação por Data e Setor
-    # Ajustamos o format aqui também para bater com o novo padrão de hífen
     df['Data_dt'] = pd.to_datetime(df['Data'], format='%d-%m-%Y')
     df = df.sort_values(by=['Data_dt', 'Setor']).drop(columns=['Data_dt'])
     
     return df
 
 def exibir():
-    # Estilização do Banner
     st.markdown("""
         <style>
         .banner-container {
@@ -95,8 +90,6 @@ def exibir():
             display: flex; align-items: center; justify-content: center;
         }
         .banner-text { color: white; font-size: 28px; font-weight: bold; text-align: center; }
-        [data-testid="stFileUploadDropzone"] div div span::text { display: none; }
-        [data-testid="stFileUploadDropzone"] div div span::after { content: "Arraste os relatórios R_CENSO_RETRO aqui"; display: block; }
         </style>
         <div class="banner-container">
             <div class="banner-overlay"><div class="banner-text">Conversor de Censo Retroativo</div></div>
@@ -109,14 +102,7 @@ def exibir():
         2. Mude o tipo de impressão para **CSV**
         3. Unidade de Internação: **Todos**
         4. Data retroativa: Selecione a **data para o relatório** e o horário sempre como **23:59**.
-        5. Ordem do Relatório: **Nome do Paciente**
-        6. Tipo de Unidade de Internação: **Todos**
-        7. Desmarcar a opção **"Quebra de Página para Unidade de Internação"**
-        8. Manter marcada a opção **"Emitir Resumo Estatístico"**
-        9. Imprimir Leitos Extras: **Sim**
         """)
-        st.info("ℹ️ **Atenção**: Para cada arquivo carregado, você precisará informar a data daquele relatório no campo ao lado do arquivo. Certifique-se de informar a data correta!")
-        st.info("ℹ️ **Segurança**: Os arquivos são processados em RAM e descartados após a conversão. Nada é armazenado.")
         
     uploaded_files = st.file_uploader("Upload", type=["csv"], accept_multiple_files=True, key="uploader_censo_retro", label_visibility="collapsed")
 
@@ -146,12 +132,15 @@ def exibir():
                     st.success(f"Conversão concluída! {len(df_final)} setores processados.")
                     st.dataframe(df_final, use_container_width=True)
                     
+                    # --- AJUSTE DO NOME DO ARQUIVO ---
+                    nome_arquivo = datetime.now().strftime("CENSO_RETROATIVO_%d_%m_%Y_%H_%M_%S.csv")
                     csv = df_final.to_csv(index=False, encoding='utf-8-sig')
+                    
                     st.download_button(
                         label="📥 Baixar Censo Consolidado",
                         data=csv,
-                        file_name="censo_retroativo_hmsj.csv",
+                        file_name=nome_arquivo,
                         mime="text/csv"
                     )
                 else:
-                    st.error("Não foi possível extrair dados. Verifique se os arquivos são do tipo Censo Retroativo.")
+                    st.error("Não foi possível extrair dados.")

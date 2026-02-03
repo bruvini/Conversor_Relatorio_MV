@@ -14,17 +14,8 @@ def to_decimal(time_str):
     try:
         if not time_str or ':' not in str(time_str): return 0.0
         h, m = map(int, str(time_str).split(':'))
-        return h + m / 60.0
+        return round(h + m / 60.0, 4) # Round para evitar dízimas longas
     except: return 0.0
-
-def to_time_str(decimal_val):
-    if decimal_val < 0: decimal_val = 0
-    h = int(decimal_val)
-    m = int(round((decimal_val - h) * 60))
-    if m >= 60:
-        h += m // 60
-        m = m % 60
-    return f"{h:02d}:{m:02d}"
 
 # --- LÓGICA DE PROCESSAMENTO ---
 def processar_relatorio(arquivo_upload):
@@ -83,9 +74,12 @@ def processar_relatorio(arquivo_upload):
                     perc_str = row_str[-1]
                     ociosa = times_in_row[-1]
 
-                start_dec, end_dec, ociosa_dec = to_decimal(inicio), to_decimal(fim), to_decimal(ociosa)
-                disp_dec = end_dec - start_dec
-                util_dec = max(0, disp_dec - ociosa_dec)
+                # Convertendo tudo para decimal
+                start_dec = to_decimal(inicio)
+                end_dec = to_decimal(fim)
+                ociosa_dec = to_decimal(ociosa)
+                disp_dec = round(end_dec - start_dec, 4)
+                util_dec = round(max(0, disp_dec - ociosa_dec), 4)
                 
                 try: p = float(perc_str.replace('%', '').replace(',', '.'))
                 except: p = (ociosa_dec / disp_dec * 100) if disp_dec > 0 else 0.0
@@ -94,17 +88,16 @@ def processar_relatorio(arquivo_upload):
                     'Data': current_date,
                     'Centro_Cirurgico': current_cc,
                     'Sala_Cirurgica': room_name,
-                    'Inicio_Funcionamento': inicio,
-                    'Fim_Funcionamento': fim,
-                    'Tempo_Disponivel': to_time_str(disp_dec),
-                    'Tempo_Utilizado': to_time_str(util_dec),
-                    'Tempo_Ocioso': ociosa,
-                    'Tempo_Ocioso_Decimal': round(ociosa_dec, 4),
+                    'Inicio_Funcionamento_Decimal': start_dec,
+                    'Fim_Funcionamento_Decimal': end_dec,
+                    'Tempo_Disponivel_Decimal': disp_dec,
+                    'Tempo_Utilizado_Decimal': util_dec,
+                    'Tempo_Ocioso_Decimal': ociosa_dec,
                     '%_Ociosidade': round(p, 2)
                 })
     return data_consolidada
 
-# --- FUNÇÃO PRINCIPAL CHAMADA PELO APP.PY ---
+# --- FUNÇÃO PRINCIPAL ---
 def exibir():
     st.markdown("""
         <style>

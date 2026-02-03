@@ -3,6 +3,7 @@ import pandas as pd
 import csv
 import io
 import re
+from datetime import datetime
 
 def limpar_valor(valor):
     try:
@@ -34,7 +35,6 @@ def processar_estatisticas(arquivo_upload):
     ]
 
     # 1. Verifica se o arquivo tem o padrão analítico (contém a palavra "Data:")
-    # Isso é crucial para ignorar o resumo ao final do arquivo analítico
     tem_datas_internas = any("Data:" in " ".join(r) for r in linhas)
 
     for row in linhas:
@@ -51,17 +51,13 @@ def processar_estatisticas(arquivo_upload):
         # 2. Identifica o Setor
         setor_raw = ""
         
-        # Se o arquivo tem datas (Analítico), o setor DEVE estar na coluna A (Índice 0)
-        # Isso ignora o resumo ao final do arquivo, onde os setores estão na Coluna C
         if tem_datas_internas:
             if len(row) > 0 and row[0].strip() and not any(p in row[0].lower() for p in palavras_bloqueadas):
                 setor_raw = row[0].strip()
-        # Fallback para o modo Sintético (caso o usuário suba o arquivo de resumo)
         else:
             if len(row) > 2 and row[2].strip() and not any(p in row[2].lower() for p in palavras_bloqueadas):
                 setor_raw = row[2].strip()
 
-        # Filtros de segurança para evitar capturar lixo de formatação
         if not setor_raw or re.match(r'\d{2}/\d{2}/\d{4}', setor_raw) or len(setor_raw) < 3:
             continue
             
@@ -69,8 +65,6 @@ def processar_estatisticas(arquivo_upload):
         
         # 3. Mapeamento Dinâmico de Colunas
         if data_atual or not tem_datas_internas:
-            # Caso A: Estrutura Analítica com Deslocamento (High-col count)
-            # Usando as coordenadas: R(17), Y(24), AF(31), AL(37), AQ(42), AW(48), BD(55), BG(58), CR(95)
             if len(row) > 80:
                 dados_finais.append({
                     'Data': data_atual if data_atual else "Sintético",
@@ -85,22 +79,20 @@ def processar_estatisticas(arquivo_upload):
                     'Obitos -24Hs': limpar_valor(row[58]),
                     'Pac/Dia': limpar_valor(row[95])
                 })
-            # Caso B: Estrutura Analítica Padrão (Sem quebra de linha excessiva)
             elif tem_datas_internas:
                 dados_finais.append({
                     'Data': data_atual,
                     'Setor': setor,
-                    '00:00': limpar_valor(row[4]),          # Col E
-                    'Intern.': limpar_valor(row[6]),        # Col G
-                    'Transf DE': limpar_valor(row[8]),      # Col I
-                    'Altas': limpar_valor(row[11]),         # Col L
-                    'Transf PARA': limpar_valor(row[13]),   # Col N
-                    'Obitos': limpar_valor(row[15]),        # Col P
-                    'Óbitos +24Hs': limpar_valor(row[18]),  # Col S
-                    'Obitos -24Hs': limpar_valor(row[20]),  # Col U
-                    'Pac/Dia': limpar_valor(row[37])        # Col AL
+                    '00:00': limpar_valor(row[4]),
+                    'Intern.': limpar_valor(row[6]),
+                    'Transf DE': limpar_valor(row[8]),
+                    'Altas': limpar_valor(row[11]),
+                    'Transf PARA': limpar_valor(row[13]),
+                    'Obitos': limpar_valor(row[15]),
+                    'Óbitos +24Hs': limpar_valor(row[18]),
+                    'Obitos -24Hs': limpar_valor(row[20]),
+                    'Pac/Dia': limpar_valor(row[37])
                 })
-            # Caso C: Estrutura Sintética (Baseada no mapeamento do arquivo 3)
             else:
                 dados_finais.append({
                     'Data': "Consolidado",
@@ -115,8 +107,6 @@ def processar_estatisticas(arquivo_upload):
     if not dados_finais: return None
     
     df = pd.DataFrame(dados_finais)
-    
-    # Ordenação final se houver datas reais
     if data_atual:
         df['Data_dt'] = pd.to_datetime(df['Data'], format='%d/%m/%Y', errors='coerce')
         df = df.sort_values(by=['Data_dt', 'Setor']).drop(columns=['Data_dt'])
@@ -124,7 +114,6 @@ def processar_estatisticas(arquivo_upload):
     return df
 
 def exibir():
-    # Estilização do Banner
     st.markdown("""
         <style>
         .banner-container {
@@ -146,28 +135,15 @@ def exibir():
 
     with st.expander("Instruções de Extração (MV Soul)", expanded=False):
         st.markdown("""
-        ### Como extrair o arquivo correto:
         1. **Internação** > **Relatórios** > **Estatísticos** > **Hospitalar** > **Sintético**.
-        2. Saída: **Tela**.
-        3. **IMPORTANTE: Mantenha DESMARCADAS** as opções:
-            * *Imprimir apenas resumo*
-            * *Quadro de resumo por unidade*
-        4. Selecionar **Todos** em Unidade e Atendimento.
-        5. Selecionar: **Taxa Ocup. Operacional: Sim**.
-        6. Tipo de impressão: **CSV**.
+        2. Tipo de impressão: **CSV**.
         """)
 
-    uploaded_files = st.file_uploader(
-        "Uploader", 
-        type=["csv"], 
-        accept_multiple_files=True, 
-        label_visibility="collapsed",
-        key="uploader_internacao"
-    )
+    uploaded_files = st.file_uploader("Uploader", type=["csv"], accept_multiple_files=True, label_visibility="collapsed", key="uploader_internacao")
 
     if uploaded_files:
         lista_dfs = []
-        with st.spinner("Removendo duplicatas e tratando quebras de página..."):
+        with st.spinner("Tratando dados..."):
             for file in uploaded_files:
                 df_proc = processar_estatisticas(file)
                 if df_proc is not None:
@@ -178,7 +154,13 @@ def exibir():
             st.success(f"Sucesso! {len(df_final)} registros processados.")
             st.dataframe(df_final, use_container_width=True)
             
+            # --- AJUSTE DO NOME DO ARQUIVO ---
+            nome_arquivo = datetime.now().strftime("ESTATISTICA_INTERNACAO_%d_%m_%Y_%H_%M_%S.csv")
             csv = df_final.to_csv(index=False, encoding='utf-8-sig')
-            st.download_button(label="📥 Baixar Planilha Consolidada", data=csv, file_name="estatisticas_internacao_hmsj.csv", mime="text/csv")
-        else:
-            st.error("Erro: Não foi possível extrair dados. Verifique se seguiu as instruções de extração.")
+            
+            st.download_button(
+                label="📥 Baixar Planilha Consolidada",
+                data=csv,
+                file_name=nome_arquivo,
+                mime="text/csv"
+            )

@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 import io
+from datetime import datetime
 
 # --- FUNÇÕES DE UTILIDADE ---
 def is_date(val):
@@ -10,11 +11,14 @@ def is_date(val):
 def is_time(val):
     return bool(re.match(r'^\d{1,2}:\d{2}$', str(val).strip()))
 
-def to_decimal(time_str):
+def to_excel_time(time_str):
+    """Converte HH:MM para fração do dia (Ex: 07:00 -> 0.291666)"""
     try:
         if not time_str or ':' not in str(time_str): return 0.0
         h, m = map(int, str(time_str).split(':'))
-        return round(h + m / 60.0, 4) # Round para evitar dízimas longas
+        # No Excel, 1 dia = 1.0. Então dividimos o total de horas por 24.
+        decimal_hours = h + m / 60.0
+        return round(decimal_hours / 24.0, 10)
     except: return 0.0
 
 # --- LÓGICA DE PROCESSAMENTO ---
@@ -74,25 +78,25 @@ def processar_relatorio(arquivo_upload):
                     perc_str = row_str[-1]
                     ociosa = times_in_row[-1]
 
-                # Convertendo tudo para decimal
-                start_dec = to_decimal(inicio)
-                end_dec = to_decimal(fim)
-                ociosa_dec = to_decimal(ociosa)
-                disp_dec = round(end_dec - start_dec, 4)
-                util_dec = round(max(0, disp_dec - ociosa_dec), 4)
+                # Convertendo para fração de dia (Padrão Planilha)
+                start_val = to_excel_time(inicio)
+                end_val = to_excel_time(fim)
+                ociosa_val = to_excel_time(ociosa)
+                disp_val = round(end_val - start_val, 10)
+                util_val = round(max(0, disp_val - ociosa_val), 10)
                 
                 try: p = float(perc_str.replace('%', '').replace(',', '.'))
-                except: p = (ociosa_dec / disp_dec * 100) if disp_dec > 0 else 0.0
+                except: p = (ociosa_val / disp_val * 100) if disp_val > 0 else 0.0
 
                 data_consolidada.append({
                     'Data': current_date,
                     'Centro_Cirurgico': current_cc,
                     'Sala_Cirurgica': room_name,
-                    'Inicio_Funcionamento_Decimal': start_dec,
-                    'Fim_Funcionamento_Decimal': end_dec,
-                    'Tempo_Disponivel_Decimal': disp_dec,
-                    'Tempo_Utilizado_Decimal': util_dec,
-                    'Tempo_Ocioso_Decimal': ociosa_dec,
+                    'Inicio_Funcionamento': start_val,
+                    'Fim_Funcionamento': end_val,
+                    'Tempo_Disponivel': disp_val,
+                    'Tempo_Utilizado': util_val,
+                    'Tempo_Ocioso': ociosa_val,
                     '%_Ociosidade': round(p, 2)
                 })
     return data_consolidada
@@ -134,5 +138,13 @@ def exibir():
             st.success(f"Processado: {len(df)} registros.")
             st.dataframe(df, use_container_width=True)
             
-            csv = df.to_csv(index=False, encoding='utf-8-sig')
-            st.download_button("📥 Baixar Base Consolidada", data=csv, file_name="ociosidade_consolidada.csv", mime="text/csv")
+            # --- AREA DE DOWNLOAD ---
+            nome_arquivo = datetime.now().strftime("OCIOSIDADE_SALA_CIRURGICA_%d_%m_%Y_%H_%M_%S.csv")
+            csv_download = df.to_csv(index=False, encoding='utf-8-sig', decimal=',') # decimal=',' ajuda o Excel BR
+            
+            st.download_button(
+                label="📥 Baixar Base Consolidada (CSV)",
+                data=csv_download,
+                file_name=nome_arquivo,
+                mime="text/csv"
+            )

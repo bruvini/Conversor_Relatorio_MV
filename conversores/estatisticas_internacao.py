@@ -65,7 +65,7 @@ def processar_estatisticas(arquivo_upload):
         
         # 3. Mapeamento Dinâmico de Colunas
         if data_atual or not tem_datas_internas:
-            if len(row) > 80:
+            if len(row) > 80: # Layout padrão 1
                 dados_finais.append({
                     'Data': data_atual if data_atual else "Sintético",
                     'Setor': setor,
@@ -79,7 +79,7 @@ def processar_estatisticas(arquivo_upload):
                     'Obitos -24Hs': limpar_valor(row[58]),
                     'Pac/Dia': limpar_valor(row[95])
                 })
-            elif tem_datas_internas:
+            elif tem_datas_internas: # Layout padrão 2 (Analítico com quebras)
                 dados_finais.append({
                     'Data': data_atual,
                     'Setor': setor,
@@ -93,7 +93,7 @@ def processar_estatisticas(arquivo_upload):
                     'Obitos -24Hs': limpar_valor(row[20]),
                     'Pac/Dia': limpar_valor(row[37])
                 })
-            else:
+            else: # Layout padrão 3 (Consolidado simples)
                 dados_finais.append({
                     'Data': "Consolidado",
                     'Setor': setor,
@@ -114,6 +114,7 @@ def processar_estatisticas(arquivo_upload):
     return df
 
 def exibir():
+    # --- CSS DO BANNER ---
     st.markdown("""
         <style>
         .banner-container {
@@ -133,34 +134,68 @@ def exibir():
         </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("Instruções de Extração (MV Soul)", expanded=False):
-        st.markdown("""
-        1. **Internação** > **Relatórios** > **Estatísticos** > **Hospitalar** > **Sintético**.
-        2. Tipo de impressão: **CSV**.
+    # --- INSTRUÇÕES VISÍVEIS (FORA DO EXPANDER) ---
+    st.markdown("### 🧭 Instruções de Extração (MV Soul)")
+    st.markdown("**Caminho:** `Atendimento > Internação > Relatórios > Estatísticos > Hospitalar > Sintético`")
+
+    col_instrucao, col_aviso = st.columns([1.2, 1])
+
+    with col_instrucao:
+        st.info("""
+        **🛠️ Parâmetros Obrigatórios:**
+        * **Tipo de Impressão:** CSV
+        * **Unidade de Internação / Serviço / Convênio:** `%`
+        * **Período:** Data Inicial e Final (Sempre 1 dia anterior ao atual)
+        * **Tipo de Unidade de Internação:** Todos
+        * **Tipo de Atendimento:** Todos
+        * **Contabilizar Taxa de Ocup. Operacional:** Sim
         """)
 
-    uploaded_files = st.file_uploader("Uploader", type=["csv"], accept_multiple_files=True, label_visibility="collapsed", key="uploader_internacao")
+    with col_aviso:
+        st.error("""
+        **⚠️ MUITA ATENÇÃO:**
+        
+        Não marcar as seguintes caixas:
+        
+        * ❌ Imprime apenas resumo
+        * ❌ Resumo de Unidade por Tipo de Convênio
+        """)
+
+    st.markdown("---")
+
+    # --- UPLOADER ---
+    uploaded_files = st.file_uploader(
+        "Carregue o arquivo CSV gerado no MV:", 
+        type=["csv"], 
+        accept_multiple_files=True, 
+        key="uploader_internacao"
+    )
 
     if uploaded_files:
         lista_dfs = []
-        with st.spinner("Tratando dados..."):
+        with st.spinner("Lendo e tratando dados do relatório bagunçado..."):
             for file in uploaded_files:
+                # Processa cada arquivo
                 df_proc = processar_estatisticas(file)
                 if df_proc is not None:
                     lista_dfs.append(df_proc)
         
         if lista_dfs:
+            # Consolida todos os arquivos carregados
             df_final = pd.concat(lista_dfs).drop_duplicates()
-            st.success(f"Sucesso! {len(df_final)} registros processados.")
+            
+            st.success(f"✅ Sucesso! {len(df_final)} registros processados e limpos.")
             st.dataframe(df_final, use_container_width=True)
             
             # --- AJUSTE DO NOME DO ARQUIVO ---
             nome_arquivo = datetime.now().strftime("ESTATISTICA_INTERNACAO_%d_%m_%Y_%H_%M_%S.csv")
-            csv = df_final.to_csv(index=False, encoding='utf-8-sig')
+            csv_data = df_final.to_csv(index=False, encoding='utf-8-sig')
             
             st.download_button(
                 label="📥 Baixar Planilha Consolidada",
-                data=csv,
+                data=csv_data,
                 file_name=nome_arquivo,
                 mime="text/csv"
             )
+        else:
+            st.warning("Não foi possível extrair dados válidos. Verifique se o arquivo segue as instruções acima.")

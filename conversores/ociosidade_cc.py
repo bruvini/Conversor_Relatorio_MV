@@ -97,6 +97,8 @@ def processar_relatorio(arquivo_upload):
                     'Tempo_Disponivel': disp_val,
                     'Tempo_Utilizado': util_val,
                     'Tempo_Ocioso': ociosa_val,
+                    # NOVA COLUNA AQUI: Multiplica a fração do dia por 24 horas
+                    'Tempo_Ocioso_Decimal': round(ociosa_val * 24, 2),
                     '%_Ociosidade': round(p, 2)
                 })
     return data_consolidada

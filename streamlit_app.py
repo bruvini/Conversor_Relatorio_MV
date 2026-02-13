@@ -1,6 +1,7 @@
 import streamlit as st
 from componentes import header, footer
-from conversores import ociosidade_cc, estatisticas_internacao, censo_retroativo # Import atualizado
+# Atualize a linha abaixo para importar o novo conversor
+from conversores import ociosidade_cc, estatisticas_internacao, censo_retroativo, mapa_transferencia 
 
 # 1. Configuração de página
 st.set_page_config(page_title="Conversor de Relatórios - MV", layout="wide")
@@ -16,7 +17,8 @@ opcao = st.sidebar.selectbox(
         "Início", 
         "Ociosidade de Centro Cirúrgico",
         "Estatísticas de Internação",
-        "Censo Retroativo" # Nova opção incluída
+        "Censo Retroativo",
+        "Mapa de Transferência de Leito" # Nova opção incluída
     ],
     key="menu_navegacao_principal"
 )
@@ -49,6 +51,9 @@ elif opcao == "Estatísticas de Internação":
 
 elif opcao == "Censo Retroativo":
     censo_retroativo.exibir()
+
+elif opcao == "Mapa de Transferência de Leito": # Nova rota incluída
+    mapa_transferencia.exibir()
 
 # 5. Rodapé
 footer.exibir()
